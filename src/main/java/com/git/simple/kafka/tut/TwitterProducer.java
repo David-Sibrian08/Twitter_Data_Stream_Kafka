@@ -10,6 +10,7 @@ import com.twitter.hbc.core.endpoint.StatusesFilterEndpoint;
 import com.twitter.hbc.core.processor.StringDelimitedProcessor;
 import com.twitter.hbc.httpclient.auth.Authentication;
 import com.twitter.hbc.httpclient.auth.OAuth1;
+import io.github.cdimascio.dotenv.Dotenv;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,10 +21,16 @@ import java.util.concurrent.TimeUnit;
 
 public class TwitterProducer {
 
-    String consumerKey = "0WDmxMYyYITCJa44vOdtGOgue";
-    String consumerSecret = "Hj2YIney2FWWIjw25tsLsBrJKBEhjuNvKdXD3jxMbJBJX6iNds";
-    String token = "316508880-OkEN28gnqhgh6yInwBl4NZ8dZhrsZhQxFufR5mQz";
-    String secret = "w1853Tb1F7zpipgLGPeiseiFhy2r7AdXZfVcUfsCbipj1";
+    Dotenv dotenv = Dotenv.configure()
+            .directory(".idea/dev.env")
+            .ignoreIfMalformed() //
+            .ignoreIfMissing()
+            .load();
+
+    String consumerKey = dotenv.get("CONSUMER_KEY");
+    String consumerSecret = dotenv.get("CONSUMER_SECRET");
+    String token = dotenv.get("ACCESS_TOKEN");
+    String secret = dotenv.get("ACCESS_SECRET");
 
     Logger logger = LoggerFactory.getLogger(TwitterProducer.class.getName());
 

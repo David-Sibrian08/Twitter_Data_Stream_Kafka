@@ -13,8 +13,9 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.elasticsearch.action.bulk.BulkRequest;
+import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.index.IndexRequest;
-import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestClientBuilder;
@@ -67,6 +68,8 @@ public class ElasticSearchConsumer {
         properties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, group_id);
         properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        properties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+        properties.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "100");       //receive a batch of 100 at a time (max)
 
         KafkaConsumer consumer = new KafkaConsumer(properties);
         consumer.subscribe(Arrays.asList(topic));
@@ -85,15 +88,32 @@ public class ElasticSearchConsumer {
         while (true) {
             ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofMillis(100));
 
+            int recordCount = records.count();
+
+            logger.info("Received " + recordCount + " records");
+
+            BulkRequest bulkRequest = new BulkRequest();
+
             for (ConsumerRecord<String, String> record : records) {
-                //data is inserted in ES
                 //We will make our producer idempotent by grabbing unique IDs related to the tweets
-                String id = extractId(record.value());
+                try {
+                    String id = extractId(record.value());
 
-                IndexRequest indexRequest = new IndexRequest("twitter").source(record.value(), XContentType.JSON).id(id);
-                IndexResponse indexResponse = client.index(indexRequest, RequestOptions.DEFAULT);
+                    //data is inserted in ES
+                    IndexRequest indexRequest = new IndexRequest("twitter").source(record.value(), XContentType.JSON).id(id);
 
-                logger.info(indexResponse.getId());
+                    bulkRequest.add(indexRequest);      //add record to our bulk request
+                } catch (NullPointerException npe) {
+                    logger.warn("Skipping Bad Data: " + record.value());
+                }
+
+            }
+            if (recordCount > 0) {
+                BulkResponse bulkItemResponses = client.bulk(bulkRequest, RequestOptions.DEFAULT);
+
+                logger.info("Committing offsets");
+                kafkaConsumer.commitSync();
+                logger.info("Offsets have been committed");
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException e) {

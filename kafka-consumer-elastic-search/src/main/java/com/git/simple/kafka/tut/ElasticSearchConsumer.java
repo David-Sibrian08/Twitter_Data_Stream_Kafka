@@ -1,5 +1,6 @@
 package com.git.simple.kafka.tut;
 
+import com.google.gson.JsonParser;
 import io.github.cdimascio.dotenv.Dotenv;
 import org.apache.http.HttpHost;
 import org.apache.http.auth.AuthScope;
@@ -56,7 +57,7 @@ public class ElasticSearchConsumer {
         return client;
     }
 
-    public static KafkaConsumer<String, String> createConsumer(String topic) {
+    public static KafkaConsumer createConsumer(String topic) {
         String bootstrapServers = "127.0.0.1:9092";
         String group_id = "kafka-demo-elasticsearch";
 
@@ -67,7 +68,7 @@ public class ElasticSearchConsumer {
         properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, group_id);
         properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
-        KafkaConsumer<String, String> consumer = new KafkaConsumer(properties);
+        KafkaConsumer consumer = new KafkaConsumer(properties);
         consumer.subscribe(Arrays.asList(topic));
 
         return consumer;
@@ -86,12 +87,13 @@ public class ElasticSearchConsumer {
 
             for (ConsumerRecord<String, String> record : records) {
                 //data is inserted in ES
+                //We will make our producer idempotent by grabbing unique IDs related to the tweets
+                String id = extractId(record.value());
 
-                IndexRequest indexRequest = new IndexRequest("twitter").source(record.value(), XContentType.JSON);
+                IndexRequest indexRequest = new IndexRequest("twitter").source(record.value(), XContentType.JSON).id(id);
                 IndexResponse indexResponse = client.index(indexRequest, RequestOptions.DEFAULT);
 
-                String id = indexResponse.getId();
-                logger.info(id);
+                logger.info(indexResponse.getId());
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException e) {
@@ -101,5 +103,11 @@ public class ElasticSearchConsumer {
         }
 
         //client.close();
+    }
+
+    private static String extractId(String jsonTweet) {
+        JsonParser parser = new JsonParser();
+
+        return parser.parse(jsonTweet).getAsJsonObject().get("id_str").getAsString();
     }
 }
